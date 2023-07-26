@@ -8,7 +8,7 @@ type PdfTableOptions struct {
 	// default is "Bursa Effek Indonesia"
 	HeaderTitle string
 	// specify each collumn name
-	HeaderRows []string
+	HeaderRows []TableHeader
 	// "A3", "A4", "Legal", "Letter", "A5" default is "A4"
 	PageSize string
 	// path to logo default is globe idx
@@ -102,4 +102,25 @@ func (opt *PdfTableOptions) getHeaderTitle() string {
 		return "Bursa Efek Indonesia"
 	}
 	return opt.HeaderTitle
+}
+
+type TableHeader struct {
+	Title    string
+	Width    float64
+	Children []TableHeader
+}
+
+func (t TableHeader) GetWidth(props []TableHeader) float64 {
+	var result float64
+
+	if len(t.Children) <= 0 {
+		return t.Width
+	}
+
+	for _, header := range props {
+		result += header.GetWidth(header.Children)
+	}
+
+	return result
+
 }
