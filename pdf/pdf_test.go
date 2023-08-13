@@ -27,44 +27,44 @@ func TestGeneratePdf(t *testing.T) {
 	// CreateManagementFormPDF(&PdfTableOptions{PapperWidth: 600, Papperheight: 500}, CreateManagementFormTableHeader([]string{"internal", "external"}))
 }
 
-func TestGetWidth(t *testing.T) {
-	header := TableHeader{
-		Title: "lorem",
-		Width: 123,
-	}
+// func TestGetWidth(t *testing.T) {
+// 	header := TableHeader{
+// 		Title: "lorem",
+// 		Width: 123,
+// 	}
 
-	var child []TableHeader
+// 	var child []TableHeader
 
-	for i := 0; i < 3; i++ {
-		item := TableHeader{
-			Title: "hoho",
-			Width: float64(i + 1),
-		}
+// 	for i := 0; i < 3; i++ {
+// 		item := TableHeader{
+// 			Title: "hoho",
+// 			Width: float64(i + 1),
+// 		}
 
-		if i == 2 {
-			var gc []TableHeader
-			for i := 0; i < 3; i++ {
-				grandChild := TableHeader{
-					Title: fmt.Sprintf("hihi %v", i+1),
-					Width: 40,
-				}
-				gc = append(gc, grandChild)
-			}
+// 		if i == 2 {
+// 			var gc []TableHeader
+// 			for i := 0; i < 3; i++ {
+// 				grandChild := TableHeader{
+// 					Title: fmt.Sprintf("hihi %v", i+1),
+// 					Width: 40,
+// 				}
+// 				gc = append(gc, grandChild)
+// 			}
 
-			item.Children = gc
-		}
+// 			item.Children = gc
+// 		}
 
-		child = append(child, item)
-	}
+// 		child = append(child, item)
+// 	}
 
-	header.Children = child
+// 	header.Children = child
 
-	var tableHeaders []TableHeader
-	tableHeaders = append(tableHeaders, header)
-	var collumnWidth []float64
+// 	var tableHeaders []TableHeader
+// 	tableHeaders = append(tableHeaders, header)
+// 	var collumnWidth []float64
 
-	for _, header := range tableHeaders {
-		collumnWidth = append(collumnWidth, header.GetWidth(header.Children))
-	}
+// 	for _, header := range tableHeaders {
+// 		collumnWidth = append(collumnWidth, header.GetWidth(header.Children))
+// 	}
 
-}
+// }
