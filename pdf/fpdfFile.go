@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"regexp"
 	"time"
 
@@ -152,14 +153,14 @@ func drawTable(pdf *fpdf.Fpdf, pageProps *fpdfPageProperties, data [][]string) {
 		maxColHeight := getHighestCol(pdf, columnWidth, rows)
 		currRowsheight := float64(maxColHeight) * lineHeight
 		currPageRowHeight := func() float64 {
-			if currentY+currRowsheight > pageHeight-30 {
-				return pageHeight - 30 - currentY
+			if pageProps.isNeedPageBreak(currentY+currRowsheight) && math.Floor((pageHeight-30-currentY)/lineHeight) != 0 {
+				return math.Floor((pageHeight-30-currentY)/lineHeight) * lineHeight
 			}
 			return currRowsheight
 		}()
 		curRowsBgHeight := func() float64 {
-			if currentY+currPageRowHeight > pageHeight-30 {
-				return pageHeight - 30 - currentY
+			if pageProps.isNeedPageBreak(currentY+currPageRowHeight) && math.Floor((pageHeight-30-currentY)/lineHeight) != 0 {
+				return math.Floor((pageHeight-30-currentY)/lineHeight) * lineHeight
 			}
 			return currPageRowHeight
 		}()
@@ -206,26 +207,11 @@ func drawRows(pdf *fpdf.Fpdf, pageProps *fpdfPageProperties, rows []string) {
 	currentY := pageProps.currentY
 	columnWidth := pageProps.colWidthList
 	lineHeight := pageProps.lineHeight
-	pageHeight := pageProps.pageHeight
 	maxColHeight := getHighestCol(pdf, columnWidth, rows)
 	currRowsheight := float64(maxColHeight) * lineHeight
-
-	currPageRowHeight := func() float64 {
-		if pageProps.isNeedPageBreak(currentY + currRowsheight) {
-			return pageHeight - 30 - currentY
-		}
-		return currRowsheight
-	}()
-	curRowsBgHeight := func() float64 {
-		if pageProps.isNeedPageBreak(currentY + currPageRowHeight) {
-			return pageHeight - 30 - currentY
-		}
-		return currPageRowHeight
-	}()
+	curRowsBgHeight := pageProps.curRowsBgHeight
 
 	pageProps.currRowsheight = currRowsheight
-	pageProps.currPageRowHeight = currPageRowHeight
-	pageProps.curRowsBgHeight = curRowsBgHeight
 	pageProps.currentX = currentX
 
 	pdf.SetFontStyle("")
@@ -260,13 +246,10 @@ func drawCell(pdf *fpdf.Fpdf, pageProps *fpdfPageProperties, content string) {
 	currentX := pageProps.currentX
 	currentY := pageProps.currentY
 	lineHeight := pageProps.lineHeight
-	currPageRowHeight := pageProps.currPageRowHeight
 	curRowsBgHeight := pageProps.curRowsBgHeight
 	colNumber := pageProps.curColIndex
 	totalWidth := pageProps.tableWidth
 	tableMarginX := pageProps.tableMarginX
-	pageHeight := pageProps.pageHeight
-	currRowsheight := pageProps.currRowsheight
 
 	pdf.SetY(currentY)
 	pdf.SetX(currentX)
@@ -294,16 +277,8 @@ func drawCell(pdf *fpdf.Fpdf, pageProps *fpdfPageProperties, content string) {
 			if pageProps.currRowsIndex%2 != 0 {
 				pdf.SetAlpha(0, "Normal")
 			}
-			pdf.Rect(tableMarginX, currentY, float64(totalWidth), currRowsheight-curRowsBgHeight, "F")
+			pdf.Rect(tableMarginX, currentY, float64(totalWidth), pageProps.currRowsheight-curRowsBgHeight, "F")
 			pdf.SetAlpha(1, "Normal")
-
-			currPageRowHeight -= curRowsBgHeight
-			curRowsBgHeight = func() float64 {
-				if pageProps.isNeedPageBreak(currentY + currPageRowHeight) {
-					return pageHeight - 30 - currentY
-				}
-				return currPageRowHeight
-			}()
 
 			pageProps.currentY = lastRowY
 		}
