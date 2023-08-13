@@ -15,21 +15,8 @@ func CreateTxtFromTable(data [][]string) {
 		return
 	}
 	defer file.Close()
-	log.Println(collumnWidth)
-	var beautifiedData []string
 
-	for _, item := range data {
-		var beautifiedRows strings.Builder
-		for i, text := range item {
-			beautifiedRows.WriteString(text)
-			for space := len(text); space <= collumnWidth[i]; space++ {
-				beautifiedRows.WriteString("\u0020")
-			}
-			beautifiedRows.WriteString("\u0020")
-		}
-		beautifiedData = append(beautifiedData, beautifiedRows.String())
-	}
-
+	beautifiedData := drawTxtTable(data, collumnWidth)
 	txtFile := bufio.NewWriter(file)
 	defer txtFile.Flush()
 
@@ -39,6 +26,18 @@ func CreateTxtFromTable(data [][]string) {
 		return
 	}
 
+}
+
+func getRowMaxContent(data []string) int {
+	var result int
+
+	for _, word := range data {
+		if len(word) >= result {
+			result = len(word)
+		}
+	}
+
+	return result
 }
 
 func getCollumnMaxWidth(data [][]string) []int {
@@ -67,24 +66,25 @@ func getCollumnMaxWidth(data [][]string) []int {
 	return result
 }
 
-type TableHeaders struct {
-	Name    string
-	Content []TableHeaders
+type TableHeader struct {
+	Name     string
+	Width    float64
+	Children []TableHeader
 }
 
-func (t TableHeaders) GetChildTotal(content []TableHeaders) int {
+func (t TableHeader) GetChildTotal(content []TableHeader) int {
 	var result int
 	if len(content) <= 0 {
 		return 1
 	}
 
 	for _, child := range content {
-		result += child.GetChildTotal(child.Content)
+		result += child.GetChildTotal(child.Children)
 	}
 	return result
 }
 
-func CreateHeaders(headers []TableHeaders) {
+func CreateHeaders(headers []TableHeader) {
 
 }
 
@@ -105,15 +105,112 @@ func IsStringOrMap(target interface{}) (string, bool) {
 	}
 }
 
-// func getContentLength(data []interface{}) int {
-// 	var result int
-// 	for _, content := range data {
-// 		contentType, isString := IsStringOrMap(content)
-// 		if isString && contentType == "string" {
-// 			result += 1
-// 		} else if isString && contentType == "map" {
-// 			result += getContentLength(content["children"])
-// 		}
-// 	}
-// 	return result
-// }
+func drawTxtTable(data [][]string, columnWidth []int) []string {
+	var result []string
+	for j, item := range data {
+		var beautifiedRows strings.Builder
+		for i, text := range item {
+			beautifiedRows.WriteString("| " + text)
+			for space := len(text); space <= columnWidth[i]; space++ {
+				beautifiedRows.WriteString("\u0020")
+			}
+			beautifiedRows.WriteString("|")
+		}
+
+		// header border bottom
+		if j == 0 {
+			beautifiedRows.WriteString("\n")
+			for i := 0; i < len(data[j]); i++ {
+				for char := 0; char <= columnWidth[i]; char++ {
+					beautifiedRows.WriteString("-")
+				}
+			}
+		}
+
+		result = append(result, beautifiedRows.String())
+	}
+	return result
+}
+
+func checkOverlappedText(data [][]string, widths []int) bool {
+	var result bool
+
+	for _, line := range data {
+
+		for i, word := range line {
+			maxWordLen := func() int {
+				if i >= len(widths) {
+					return 20
+				}
+
+				return widths[i]
+			}()
+			if len(word) > maxWordLen {
+				return true
+			}
+		}
+	}
+
+	return result
+}
+
+func checkAndModifyArray(arr [][]string) [][]string {
+	var resultArr [][]string
+
+	for _, subArr := range arr {
+		var modifiedSubArr []string
+
+		for _, str := range subArr {
+			if len(str) > 5 {
+				modifiedSubArr = append(modifiedSubArr, str[:5])
+				remainingStr := str[5:]
+				for len(remainingStr) > 5 {
+					modifiedSubArr = append(modifiedSubArr, remainingStr[:5])
+					remainingStr = remainingStr[5:]
+				}
+				if len(remainingStr) > 0 {
+					modifiedSubArr = append(modifiedSubArr, remainingStr)
+				}
+			} else {
+				modifiedSubArr = append(modifiedSubArr, str)
+			}
+		}
+
+		resultArr = append(resultArr, modifiedSubArr)
+	}
+
+	return resultArr
+}
+
+func sliceLongText2(data [][]string, maxWidths []int) [][]string {
+	var result [][]string
+	for line := 0; line < len(data); line++ {
+		copyOfLine := data[line]
+		newLineMock := make([]string, len(copyOfLine))
+		for wordIdx, word := range data[line] {
+			maxWordLen := func() int {
+				if wordIdx >= len(maxWidths) {
+					return 20
+				}
+
+				return maxWidths[wordIdx]
+			}()
+			if len(word) > maxWordLen {
+				slicedWord := string([]byte(word)[:maxWordLen])
+				remainingWord := string([]byte(word)[maxWordLen:])
+				copyOfLine[wordIdx] = slicedWord
+				newLineMock[wordIdx] = remainingWord
+			}
+		}
+		result = append(result, copyOfLine)
+		if getRowMaxContent(newLineMock) != 0 {
+			result = append(result, newLineMock)
+		}
+	}
+
+	if !checkOverlappedText(result, maxWidths) {
+		return result
+	}
+
+	return sliceLongText2(result, maxWidths)
+}

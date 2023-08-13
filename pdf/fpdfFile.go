@@ -10,19 +10,77 @@ import (
 	"github.com/go-pdf/fpdf"
 )
 
-type fpdfPageProperties struct {
-	pageLeftPadding  float64
-	pageRightpadding float64
-	pageTopPadding   float64
-	headerHeight     float64
-	currentY         float64
-	currentX         float64
-	lineHeight       float64
+type TableHeader struct {
+	Title    string
+	Width    float64
+	Children []TableHeader
 }
 
-func FpdfExport(data [][]string, props *PdfTableOptions) {
+func (t TableHeader) GetWidth(props []TableHeader) float64 {
+	var result float64
+	if len(t.Children) <= 0 {
+		return t.Width
+	}
 
-	pdf := fpdf.NewCustom(createPageConfig(props))
+	for _, header := range props {
+		result += header.GetWidth(header.Children)
+	}
+
+	return result
+}
+
+type PdfTableOptions struct {
+	// default is "Bursa Effek Indonesia"
+	HeaderTitle string
+	// specify each collumn name and size
+	HeaderRows []TableHeader
+	// "A3", "A4", "Legal", "Letter", "A5" default is "A4"
+	PageSize string
+	// path to logo default is globe idx
+	HeaderLogo string
+	// path to logo
+	FooterLogo string
+	// setting paper width
+	PapperWidth float64
+	// setting papper height
+	Papperheight float64
+	// setting page orientation by default "p" / "l"
+	PageOrientation string
+}
+
+type fpdfPageProperties struct {
+	pageLeftPadding   float64
+	pageRightpadding  float64
+	pageTopPadding    float64
+	headerHeight      float64
+	currentY          float64
+	currentX          float64
+	lineHeight        float64
+	curColWidth       float64
+	colWidthList      []float64
+	totalColumn       int
+	curColIndex       int
+	pageHeight        float64
+	currRowsheight    float64
+	currPageRowHeight float64
+	curRowsBgHeight   float64
+	currRowsIndex     int
+	tableWidth        int
+	tableMarginX      float64
+	currpage          int
+}
+
+func (p fpdfPageProperties) isNeedPageBreak(coord float64) bool {
+	return coord > p.pageHeight-30
+}
+
+func ExportTableToPDF(c context.Context, data [][]string, filename string, props *PdfTableOptions) (string, error) {
+	filenames := filename
+	if filenames == "" {
+		filenames = "export-to-pdf.pdf"
+	}
+
+	pdf := fpdf.NewCustom(createPageConfig(c, props))
 	pageProps := fpdfPageProperties{
 		pageLeftPadding:  15,
 		pageRightpadding: 15,
@@ -40,11 +98,11 @@ func FpdfExport(data [][]string, props *PdfTableOptions) {
 	pdf.AddPage()
 
 	pageWidth, pageHeight := pdf.GetPageSize()
-
 	currentY := pageProps.headerHeight + 10
 	lineHeight := float64(6)
 	pageProps.lineHeight = lineHeight
 	pageProps.currentY = currentY
+	pageProps.pageHeight = pageHeight
 
 	var columnWidth []float64
 	for _, header := range props.HeaderRows {
@@ -64,80 +122,190 @@ func FpdfExport(data [][]string, props *PdfTableOptions) {
 
 		return pageProps.pageLeftPadding
 	}()
-	log.Println("table margin x", tableMarginX)
-	log.Println("table left padding", pageProps.pageLeftPadding)
+
+	pageProps.tableWidth = totalWidth
+	pageProps.tableMarginX = tableMarginX
+	pageProps.colWidthList = columnWidth
 
 	currentX := tableMarginX
 	pageProps.currentX = currentX
 	pdf.SetLeftMargin(currentX)
-	// drawTableHeader
 
 	drawTableHeader(pdf, props.HeaderRows, &pageProps)
+	drawTable(pdf, &pageProps, data)
 
+	err := pdf.OutputFileAndClose(filenames)
+	if err != nil {
+		log.Println("failed create Pdf files :", err)
+		return "", err
+	}
+	return filenames, nil
+}
+
+func drawTable(pdf *fpdf.Fpdf, pageProps *fpdfPageProperties, data [][]string) {
 	for r, rows := range data {
+		columnWidth := pageProps.colWidthList
+		lineHeight := pageProps.lineHeight
+		currentY := pageProps.currentY
+		pageHeight := pageProps.pageHeight
+		currentX := pageProps.tableMarginX
+		maxColHeight := getHighestCol(pdf, columnWidth, rows)
+		currRowsheight := float64(maxColHeight) * lineHeight
+		currPageRowHeight := func() float64 {
+			if currentY+currRowsheight > pageHeight-30 {
+				return pageHeight - 30 - currentY
+			}
+			return currRowsheight
+		}()
+		curRowsBgHeight := func() float64 {
+			if currentY+currPageRowHeight > pageHeight-30 {
+				return pageHeight - 30 - currentY
+			}
+			return currPageRowHeight
+		}()
 
-		// prevent out of index panic
-		currColWidth := func() float64 {
-			if r > len(columnWidth)-1 {
+		pageProps.currRowsheight = currRowsheight
+		pageProps.currPageRowHeight = currPageRowHeight
+		pageProps.curRowsBgHeight = curRowsBgHeight
+		pageProps.currRowsIndex = r
+		pageProps.currentX = currentX
+
+		drawRows(pdf, pageProps, rows)
+
+		// do calibration on the props
+		currentY = pageProps.currentY
+		curRowsBgHeight = pageProps.curRowsBgHeight
+		currRowsheight = pageProps.currRowsheight
+		if pdf.PageNo() > 1 && currentY == pageProps.headerHeight+10 {
+			currentY += currRowsheight - curRowsBgHeight
+		} else {
+			currentY += float64(maxColHeight) * lineHeight
+		}
+
+		pageProps.currentY = currentY
+	}
+}
+
+func drawRows(pdf *fpdf.Fpdf, pageProps *fpdfPageProperties, rows []string) {
+	currentX := pageProps.tableMarginX
+	currentY := pageProps.currentY
+	columnWidth := pageProps.colWidthList
+	lineHeight := pageProps.lineHeight
+	pageHeight := pageProps.pageHeight
+	maxColHeight := getHighestCol(pdf, columnWidth, rows)
+	currRowsheight := float64(maxColHeight) * lineHeight
+	pageProps.currpage = pdf.PageNo()
+
+	log.Printf("for rows number : %v page position is %v", pageProps.currRowsIndex+1, pageProps.currpage)
+
+	currPageRowHeight := func() float64 {
+		if pageProps.isNeedPageBreak(currentY + currRowsheight) {
+			return pageHeight - 30 - currentY
+		}
+		return currRowsheight
+	}()
+	curRowsBgHeight := func() float64 {
+		if pageProps.isNeedPageBreak(currentY + currPageRowHeight) {
+			return pageHeight - 30 - currentY
+		}
+		return currPageRowHeight
+	}()
+
+	pageProps.currRowsheight = currRowsheight
+	pageProps.currPageRowHeight = currPageRowHeight
+	pageProps.curRowsBgHeight = curRowsBgHeight
+	pageProps.currentX = currentX
+
+	pdf.SetFontStyle("")
+	pdf.SetTextColor(0, 0, 0)
+	pdf.SetFillColor(240, 240, 240)
+	pdf.SetX(currentX)
+	pdf.SetY(currentY)
+
+	// draw bg
+	if pageProps.currRowsIndex%2 != 0 {
+		pdf.SetAlpha(0, "Normal")
+	}
+
+	pdf.Rect(currentX, currentY, float64(pageProps.tableWidth), curRowsBgHeight, "F")
+	pdf.SetAlpha(1, "Normal")
+
+	pageProps.totalColumn = len(rows) - 1
+	for colNumber, col := range rows {
+		pageProps.curColWidth = func() float64 {
+			if colNumber > len(columnWidth)-1 {
 				return 20
 			}
 
-			return columnWidth[r]
+			return columnWidth[colNumber]
 		}()
 
-		maxColHeight := getHighestCol(pdf, currColWidth, rows)
+		pageProps.curColIndex = colNumber
+		drawCell(pdf, pageProps, col)
+	}
+}
+
+func drawCell(pdf *fpdf.Fpdf, pageProps *fpdfPageProperties, content string) {
+	currColWidth := pageProps.curColWidth
+	currentX := pageProps.currentX
+	currentY := pageProps.currentY
+	lineHeight := pageProps.lineHeight
+	currPageRowHeight := pageProps.currPageRowHeight
+	curRowsBgHeight := pageProps.curRowsBgHeight
+	colNumber := pageProps.curColIndex
+	totalWidth := pageProps.tableWidth
+	tableMarginX := pageProps.tableMarginX
+	pageHeight := pageProps.pageHeight
+	currRowsheight := pageProps.currRowsheight
+
+	pdf.SetY(currentY)
+	pdf.SetX(currentX)
+
+	// column border
+	pdf.SetAlpha(.25, "Normal")
+	pdf.Line(currentX, currentY, currentX, currentY+curRowsBgHeight)
+	if colNumber == pageProps.totalColumn {
+		pdf.Line(currentX+currColWidth, currentY, currentX+currColWidth, currentY+curRowsBgHeight)
+	}
+	pdf.SetAlpha(1, "Normal")
+
+	splittedtext := pdf.SplitLines([]byte(content), currColWidth)
+	lastRowY := currentY
+	for _, text := range splittedtext {
 
 		// reset properties when add page
-		if currentY+float64(maxColHeight) > pageHeight-30 {
+		if lastRowY+float64(lineHeight) > pageHeight-30 {
 			pdf.AddPage()
 			pdf.SetPage(pdf.PageNo() + 1)
 			currentY = pageProps.headerHeight + 10
-		}
-
-		pdf.SetFontStyle("")
-		pdf.SetTextColor(0, 0, 0)
-		pdf.SetFillColor(240, 240, 240)
-
-		// if r == 0 {
-		// 	pdf.SetFontStyle("B")
-		// 	pdf.SetTextColor(255, 255, 255)
-		// 	pdf.SetFillColor(50, 117, 168)
-		// }
-
-		currentX = tableMarginX
-
-		if r%2 != 0 {
-			pdf.SetAlpha(0, "Normal")
-		}
-
-		pdf.Rect(currentX, currentY, (pageWidth - pageProps.pageLeftPadding - pageProps.pageRightpadding), float64(maxColHeight)*lineHeight, "F")
-		pdf.SetAlpha(1, "Normal")
-
-		pdf.SetX(currentX)
-		pdf.SetY(currentY)
-
-		for _, col := range rows {
-			pdf.SetY(currentY)
-			pdf.SetX(currentX)
-
-			splittedtext := pdf.SplitLines([]byte(col), currColWidth)
-			for _, text := range splittedtext {
-				pdf.CellFormat(currColWidth, lineHeight, string(text), "", 2, "C", false, 0, getLink(col))
+			lastRowY = currentY
+			// draw bg
+			if pageProps.currRowsIndex%2 != 0 {
+				pdf.SetAlpha(0, "Normal")
 			}
-			currentX += currColWidth
+			pdf.Rect(tableMarginX, currentY, float64(totalWidth), currRowsheight-curRowsBgHeight, "F")
+			pdf.SetAlpha(1, "Normal")
+
+			currPageRowHeight -= curRowsBgHeight
+			curRowsBgHeight = func() float64 {
+				if currentY+currPageRowHeight > pageHeight-30 {
+					return pageHeight - 30 - currentY
+				}
+				return currPageRowHeight
+			}()
+
+			pageProps.currentY = lastRowY
 		}
 
-		currentY += float64(maxColHeight) * lineHeight
-		pageProps.currentY = currentY
+		pdf.SetY(lastRowY)
+		pdf.SetX(currentX)
 
+		pdf.CellFormat(currColWidth, lineHeight, string(text), "", 2, "C", false, 0, getLink(content))
+		lastRowY += lineHeight
 	}
 
-	err := pdf.OutputFileAndClose("lorem.pdf")
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
+	currentX += currColWidth
+	pageProps.currentX = currentX
 }
 
 func drawFooter(pdf *fpdf.Fpdf) {
@@ -146,7 +314,7 @@ func drawFooter(pdf *fpdf.Fpdf) {
 
 	pdf.SetFooterFunc(func() {
 		footerImgHeight := 7
-
+		pdf.SetTextColor(0, 0, 0)
 		// bottom Line
 		pdf.SetFillColor(240, 240, 240)
 		pdf.Rect(0, pageHeight-float64(footerHeight), pageWidth, float64(footerHeight), "F")
@@ -158,7 +326,7 @@ func drawFooter(pdf *fpdf.Fpdf) {
 
 		// current Time
 		pdf.SetFont("Times", "", 10)
-		pdf.SetX(0)
+		pdf.SetLeftMargin(0)
 		pdf.SetY(pageHeight - float64(footerHeight))
 		footerDate := func() string {
 			return time.Now().Format("02/01/2006") + " - Page " + fmt.Sprintf("%v", pdf.PageNo()) + " Of " + fmt.Sprintf("%v", pdf.PageCount())
@@ -169,7 +337,7 @@ func drawFooter(pdf *fpdf.Fpdf) {
 		pdf.SetY(pageHeight - float64(footerHeight))
 		appNameWidth := 50
 		pdf.SetX(pageWidth - float64(appNameWidth))
-		pdf.MultiCell(float64(appNameWidth), 8, "Sistem Portal Bursa", "", "C", false)
+		pdf.MultiCell(float64(appNameWidth), 8, "Sistem IDX Portal", "", "C", false)
 
 		// idx footer logo
 		pdf.ImageOptions("idx-logo-2.png", (pageWidth-float64(footerImgHeight))/2, pageHeight-float64(footerHeight)+2, float64(footerImgHeight), float64(footerImgHeight), false, fpdf.ImageOptions{}, 0, "")
@@ -179,20 +347,22 @@ func drawFooter(pdf *fpdf.Fpdf) {
 func drawHeader(pdf *fpdf.Fpdf, title string, pageProps *fpdfPageProperties) {
 	pageProps.headerHeight = 30
 	pdf.SetHeaderFunc(func() {
+		pdf.SetTextColor(0, 0, 0)
 		pageWidth, pageHeight := pdf.GetPageSize()
 		headerTitleWidth := pageWidth / 2
 		headerTitle := title
 		headerImgHeight := pageProps.headerHeight - 5
-		watermarkWidth := pageWidth * 0.85
-
-		// header bg
-		pdf.SetFillColor(240, 240, 240)
-		pdf.Rect(0, 0, pageWidth, float64(pageProps.headerHeight+pageProps.pageTopPadding), "F")
+		a4PageWidth := 210
+		watermarkWidth := float64(a4PageWidth) * 0.85
 
 		// watermark
 		pdf.SetAlpha(0.1, "Normal")
 		pdf.ImageOptions("icon-globe-idx.png", (pageWidth-watermarkWidth)/2, (pageHeight-watermarkWidth)/2, watermarkWidth, watermarkWidth, false, fpdf.ImageOptions{ImageType: "PNG"}, 0, "")
 		pdf.SetAlpha(1, "Normal")
+
+		// header bg
+		pdf.SetFillColor(240, 240, 240)
+		pdf.Rect(0, 0, pageWidth, float64(pageProps.headerHeight+pageProps.pageTopPadding), "F")
 
 		// header logo
 		pdf.ImageOptions("icon-globe-idx.png", pageProps.pageLeftPadding, pageProps.pageTopPadding, headerImgHeight, headerImgHeight, false, fpdf.ImageOptions{}, 0, "")
@@ -212,8 +382,27 @@ func drawHeader(pdf *fpdf.Fpdf, title string, pageProps *fpdfPageProperties) {
 	})
 }
 
-type GinMockInterface interface {
-	Query(string) string
+func getHighestCol(pdf *fpdf.Fpdf, colWidth []float64, data []string) int {
+	result := 0
+
+	for i, text := range data {
+		currTextHeight := pdf.SplitLines([]byte(text), colWidth[i])
+		if len(currTextHeight) > result {
+			result = len(currTextHeight)
+		}
+	}
+	return result
+}
+
+func getLink(str string) string {
+	pattern := `^(https?|ftp|file):\/\/[-\w+&@#/%?=~_|!:,.;]*[-\w+&@#/%=~_|]$`
+	reg := regexp.MustCompile(pattern)
+
+	if reg.MatchString(str) {
+		return str
+	}
+
+	return ""
 }
 
 // return A4 size by default
@@ -236,33 +425,9 @@ func (opt *PdfTableOptions) getPageSize() fpdf.SizeType {
 
 	return results
 }
-
-func (opt *PdfTableOptions) getPageOrientation(c GinMockInterface) string {
-	pageOrientation := c.Query("orientation")
-	if c.Query("orientation") == "" && (opt.PageOrientation == "" || !IsContains([]string{"p", "l"}, opt.PageOrientation)) {
-		pageOrientation = "p"
-		return pageOrientation
-	}
-
-	if c.Query("orientation") == "" && IsContains([]string{"p", "l"}, opt.PageOrientation) {
-		pageOrientation = opt.PageOrientation
-		return pageOrientation
-	}
-	return pageOrientation
-}
-
-func IsContains[T comparable](list []T, data T) bool {
-	for _, item := range list {
-		if item == data {
-			return true
-		}
-	}
-	return false
-}
-
-func createPageConfig(props *PdfTableOptions) *fpdf.InitType {
+func createPageConfig(c context.Context, props *PdfTableOptions) *fpdf.InitType {
 	results := fpdf.InitType{
-		OrientationStr: props.getPageOrientation(&GinMock{}),
+		OrientationStr: props.getPageOrientation(c),
 		UnitStr:        "mm",
 		FontDirStr:     "",
 		Size:           props.getPageSize(),
@@ -271,258 +436,25 @@ func createPageConfig(props *PdfTableOptions) *fpdf.InitType {
 	return &results
 }
 
-type GinMock struct {
-	// data interface{}
+func (opt *PdfTableOptions) getPageOrientation(c context.Context) string {
+	// pageOrientation := c.Query("orientation")
+	// if c.Query("orientation") == "" && (opt.PageOrientation == "" || !IsContains([]string{"p", "l"}, opt.PageOrientation)) {
+	// 	pageOrientation = "p"
+	// 	return pageOrientation
+	// }
+
+	// if c.Query("orientation") == "" && IsContains([]string{"p", "l"}, opt.PageOrientation) {
+	// 	pageOrientation = opt.PageOrientation
+	// 	return pageOrientation
+	// }
+	return "p"
 }
 
-func (g *GinMock) Query(props string) string {
-	return "P"
-}
-
-func getHighestCol(pdf *fpdf.Fpdf, colWidth float64, data []string) int {
-	result := 0
-
-	for _, text := range data {
-		currTextHeight := pdf.SplitLines([]byte(text), colWidth)
-		if len(currTextHeight) > result {
-			result = len(currTextHeight)
-		}
+func (opt *PdfTableOptions) getHeaderTitle() string {
+	if opt.HeaderTitle == "" {
+		return "Bursa Efek Indonesia"
 	}
-	return result
-}
-
-func getLink(str string) string {
-	pattern := `^(https?|ftp|file):\/\/[-\w+&@#/%?=~_|!:,.;]*[-\w+&@#/%=~_|]$`
-	reg := regexp.MustCompile(pattern)
-
-	if reg.MatchString(str) {
-		return str
-	}
-
-	return ""
-}
-
-type ManagementFormUserGroup struct {
-	// internal I, external I etc
-	Name string
-	// EAB, participant. etc
-	Desc string
-	// checker, maker, approver
-	User_Permissions []string
-}
-
-type ManagementFormTableHeader struct {
-	// internal, external
-	User_Type  string
-	User_Group []ManagementFormUserGroup
-}
-
-func CreateManagementFormPDF(props *PdfTableOptions, headers []ManagementFormTableHeader) {
-	pdf := fpdf.NewCustom(createPageConfig(props))
-	pageProps := fpdfPageProperties{
-		pageLeftPadding:  15,
-		pageRightpadding: 15,
-		pageTopPadding:   5,
-	}
-
-	pdf.SetAutoPageBreak(false, 0)
-	pdf.SetFont("Arial", "", 12)
-	pdf.SetMargins(pageProps.pageLeftPadding, pageProps.pageTopPadding, pageProps.pageRightpadding)
-
-	drawHeader(pdf, props.getHeaderTitle(), &pageProps)
-	drawFooter(pdf)
-
-	pdf.SetFont("Arial", "", 12)
-	pdf.AddPage()
-
-	pageWidth, _ := pdf.GetPageSize()
-
-	totalCollumn := func() int {
-		var result int
-		for _, types := range headers {
-			for _, group := range types.User_Group {
-				result += len(group.User_Permissions)
-			}
-		}
-
-		return result
-	}()
-
-	columnsWidth := func() float64 {
-		result := (pageWidth - pageProps.pageLeftPadding - pageProps.pageRightpadding) / (float64(totalCollumn) + 2)
-
-		if result <= 20 {
-			return 20
-		}
-
-		return result
-	}()
-
-	currentY := pageProps.headerHeight + 10
-	currentX := pageProps.pageLeftPadding
-	lineHeight := float64(6)
-
-	// create table Header
-	pdf.SetFontStyle("B")
-	pdf.SetTextColor(255, 255, 255)
-	pdf.SetFillColor(50, 117, 168)
-
-	headerTableHeight := lineHeight * 4
-	pdf.SetY(currentY)
-	pdf.SetLeftMargin(currentX)
-	pdf.CellFormat(columnsWidth, headerTableHeight, "No", "", 0, "C", true, 0, "")
-	pdf.CellFormat(columnsWidth, headerTableHeight, "Nama Form", "", 0, "C", true, 0, "")
-	currentX += columnsWidth + columnsWidth
-
-	// pdf.SetX(currentX)
-	for _, userType := range headers {
-
-		currentY = pageProps.headerHeight + 10
-		pdf.SetY(currentY)
-		pdf.SetX(currentX)
-
-		childCollumnTotal := func() int {
-			var result int
-			for _, group := range userType.User_Group {
-				result += len(group.User_Permissions)
-			}
-			return result
-		}
-
-		pdf.CellFormat(columnsWidth*float64(childCollumnTotal()), lineHeight, userType.User_Type, "", 0, "C", true, 0, "")
-
-		for _, group := range userType.User_Group {
-			pdf.SetLeftMargin(currentX)
-			currentY = pageProps.headerHeight + 10 + lineHeight
-			pdf.SetY(currentY)
-			pdf.CellFormat(columnsWidth*float64(len(group.User_Permissions)), lineHeight, group.Name, "", 0, "C", true, 0, "")
-
-			currentY += lineHeight
-			pdf.SetY(currentY)
-			pdf.SetX(currentX)
-			pdf.CellFormat(columnsWidth*float64(len(group.User_Permissions)), lineHeight, group.Desc, "", 0, "C", true, 0, "")
-
-			for _, permission := range group.User_Permissions {
-				currentY = pageProps.headerHeight + 10 + lineHeight + lineHeight + lineHeight
-				pdf.SetY(currentY)
-				pdf.SetX(currentX)
-				pdf.CellFormat(columnsWidth, lineHeight, permission, "", 0, "C", true, 0, "")
-				currentX += columnsWidth
-			}
-		}
-	}
-
-	err := pdf.OutputFileAndClose("manajemenform.pdf")
-	if err != nil {
-		log.Println("failed create Pdf files :", err)
-		return
-	}
-
-}
-
-func ExportTableToPDF(c *context.Context, data [][]string, filename string, props *PdfTableOptions) (string, error) {
-
-	filenames := filename
-	if filenames == "" {
-		filenames = "export-to-pdf.pdf"
-	}
-
-	pdf := fpdf.NewCustom(createPageConfig(props))
-	pageProps := fpdfPageProperties{
-		pageLeftPadding:  15,
-		pageRightpadding: 15,
-		pageTopPadding:   5,
-	}
-
-	pdf.SetAutoPageBreak(false, 0)
-	pdf.SetFont("Arial", "", 12)
-	pdf.SetMargins(pageProps.pageLeftPadding, pageProps.pageTopPadding, pageProps.pageRightpadding)
-
-	drawHeader(pdf, props.getHeaderTitle(), &pageProps)
-	drawFooter(pdf)
-
-	pdf.SetFont("Arial", "", 12)
-	pdf.AddPage()
-
-	pageWidth, pageHeight := pdf.GetPageSize()
-
-	columnsWidth := func() float64 {
-		result := (pageWidth - pageProps.pageLeftPadding - pageProps.pageRightpadding) / float64(len(data[0]))
-
-		if result <= 20 {
-			return 20
-		}
-
-		return result
-	}()
-
-	currentY := pageProps.headerHeight + 10
-	lineHeight := float64(6)
-
-	for r, rows := range data {
-		maxColHeight := getHighestCol(pdf, columnsWidth, rows)
-
-		// reset properties when add page
-		if currentY+float64(maxColHeight) > pageHeight-30 {
-			pdf.AddPage()
-			pdf.SetPage(pdf.PageNo() + 1)
-			currentY = pageProps.headerHeight + 10
-		}
-
-		pdf.SetFontStyle("")
-		pdf.SetTextColor(0, 0, 0)
-		pdf.SetFillColor(240, 240, 240)
-
-		if r == 0 {
-			pdf.SetFontStyle("B")
-			pdf.SetTextColor(255, 255, 255)
-			pdf.SetFillColor(50, 117, 168)
-		}
-
-		currentX := pageProps.pageLeftPadding
-
-		if r%2 != 0 {
-			pdf.SetAlpha(0, "Normal")
-		}
-
-		currRowsheight := float64(maxColHeight) * lineHeight
-
-		pdf.Rect(currentX, currentY, (pageWidth - pageProps.pageLeftPadding - pageProps.pageRightpadding), currRowsheight, "F")
-		pdf.SetAlpha(1, "Normal")
-
-		pdf.SetX(currentX)
-		pdf.SetY(currentY)
-
-		for colNumber, col := range rows {
-			pdf.SetY(currentY)
-			pdf.SetX(currentX)
-
-			pdf.SetAlpha(.25, "Normal")
-			pdf.Line(currentX, currentY, currentX, currentY+currRowsheight)
-			if colNumber == len(rows)-1 {
-				pdf.Line(pageWidth-pageProps.pageRightpadding, currentY, pageWidth-pageProps.pageRightpadding, currentY+currRowsheight)
-
-			}
-			pdf.SetAlpha(1, "Normal")
-
-			splittedtext := pdf.SplitLines([]byte(col), columnsWidth)
-			for _, text := range splittedtext {
-				pdf.CellFormat(columnsWidth, lineHeight, string(text), "", 2, "C", false, 0, getLink(col))
-			}
-			currentX += columnsWidth
-		}
-
-		currentY += float64(maxColHeight) * lineHeight
-		pageProps.currentY = currentY
-
-	}
-
-	err := pdf.OutputFileAndClose(filenames)
-	if err != nil {
-		log.Println("failed create Pdf files :", err)
-		return "", err
-	}
-	return filenames, nil
+	return opt.HeaderTitle
 }
 
 func drawTableHeader(pdf *fpdf.Fpdf, headers []TableHeader, pageProps *fpdfPageProperties) {
@@ -534,12 +466,37 @@ func drawTableHeader(pdf *fpdf.Fpdf, headers []TableHeader, pageProps *fpdfPageP
 	lineHeight := pageProps.lineHeight
 	currentY := pageProps.currentY
 
+	pdf.SetFontStyle("B")
+	pdf.SetTextColor(255, 255, 255)
+	pdf.SetFillColor(50, 117, 168)
+
+	// get how high this row are
+	var headerTexts []string
+	var headerWidths []float64
+	for _, header := range headers {
+		headerTexts = append(headerTexts, header.Title)
+		headerWidths = append(headerWidths, header.GetWidth(header.Children))
+	}
+
+	maxColHeight := getHighestCol(pdf, headerWidths, headerTexts)
+	currRowsheight := float64(maxColHeight) * lineHeight
+
+	var totalWidth int
+	for _, col := range headerWidths {
+		totalWidth += int(col)
+	}
+	// draw bg
+	pdf.Rect(currentX, currentY, float64(totalWidth), currRowsheight, "F")
+
 	for _, header := range headers {
 		pdf.SetLeftMargin(currentX)
 		pdf.SetY(currentY)
 		curColWidth := header.GetWidth(header.Children)
 
-		pdf.CellFormat(curColWidth, lineHeight, string(header.Title), "1", 2, "C", false, 0, getLink(header.Title))
+		splittedtext := pdf.SplitLines([]byte(header.Title), curColWidth)
+		for _, text := range splittedtext {
+			pdf.CellFormat(curColWidth, lineHeight, string(text), "", 2, "C", false, 0, getLink(header.Title))
+		}
 
 		currentX += curColWidth
 		if len(header.Children) > 0 {
@@ -550,4 +507,26 @@ func drawTableHeader(pdf *fpdf.Fpdf, headers []TableHeader, pageProps *fpdfPageP
 		drawTableHeader(pdf, header.Children, pageProps)
 		pageProps.currentX = currentX
 	}
+	// prepare property to be used next component
+	pageProps.currentY += float64(maxColHeight * int(lineHeight))
+	pageProps.currentX = pageProps.tableMarginX
+}
+
+func GenerateTableHeaders(titles []string, widths []float64) []TableHeader {
+	var result []TableHeader
+
+	for i, title := range titles {
+		item := TableHeader{
+			Title: title,
+			Width: func() float64 {
+				if i >= len(widths) {
+					return 20
+				}
+				return widths[i]
+			}(),
+		}
+		result = append(result, item)
+	}
+
+	return result
 }

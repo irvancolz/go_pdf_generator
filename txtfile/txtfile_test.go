@@ -48,26 +48,26 @@ func TestIsMap(t *testing.T) {
 }
 
 func TestGetContentlength(t *testing.T) {
-	var data []TableHeaders
+	var data []TableHeader
 
 	for i := 0; i < 4; i++ {
-		child := TableHeaders{
+		child := TableHeader{
 			Name: "lorem",
 		}
 		data = append(data, child)
 	}
 
-	var child []TableHeaders
+	var child []TableHeader
 	for i := 0; i < 12; i++ {
-		childitem := TableHeaders{
+		childitem := TableHeader{
 			Name: "lorem",
 		}
 		child = append(child, childitem)
 	}
 
-	withChildData := TableHeaders{
-		Name:    "ipsum",
-		Content: child,
+	withChildData := TableHeader{
+		Name:     "ipsum",
+		Children: child,
 	}
 
 	data = append(data, withChildData)
@@ -75,8 +75,23 @@ func TestGetContentlength(t *testing.T) {
 	var totalContent int
 
 	for _, header := range data {
-		totalContent += header.GetChildTotal(header.Content)
+		totalContent += header.GetChildTotal(header.Children)
 	}
 
 	t.Log(totalContent)
+}
+
+func TestGetRowMaxLen(t *testing.T) {
+	arrayOfArray := [][]string{
+		{"apple", "banana", "orange"},
+		{"cat", "dog", "elephantsloremipsum"},
+		{"how", "are", "you"},
+	}
+
+	maxWidth := []int{5, 3, 4}
+
+	modifiedArray := sliceLongText2(arrayOfArray, maxWidth)
+
+	t.Log(modifiedArray)
+
 }

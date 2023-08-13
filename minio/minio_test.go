@@ -24,3 +24,13 @@ func TestRmFile(t *testing.T) {
 	Client := InitMinio()
 	RemoveFile(Client, "nano_chan.jpg")
 }
+
+func TestBucketPolicy(t *testing.T) {
+	client := InitMinio()
+	GetFilePath(client, "nano_chan.jpg")
+}
+
+func TestIsObjExists(t *testing.T) {
+	client := InitMinio()
+	CheckObjExist(client, "nano_chan.jpg")
+}

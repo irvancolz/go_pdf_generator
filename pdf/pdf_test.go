@@ -1,6 +1,7 @@
 package pdf
 
 import (
+	"context"
 	"fmt"
 	"testing"
 )
@@ -8,58 +9,21 @@ import (
 func TestGeneratePdf(t *testing.T) {
 	toPdf := make([][]string, 0)
 
-	var headers []TableHeader
+	headerName := []string{"no", "lorem", "ipsum", "dolor", "amet"}
+	colWidth := []float64{10, 40, 40, 60, 30, 20}
+	headers := GenerateTableHeaders(headerName, colWidth)
 
-	header := TableHeader{
-		Title: "lorem",
-		Width: 123,
+	for i := 0; i < 50; i++ {
+		result := []string{fmt.Sprintf("%v", i+1), "lorem", "https://www.google.com", "kolom panjang di nomor tiga dari mungkin dengan ipsum samping", " empat"}
+		toPdf = append(toPdf, result)
 	}
-
-	header2 := TableHeader{
-		Title: "lorem 2",
-		Width: 40,
-	}
-
-	var child []TableHeader
-
-	for i := 0; i < 3; i++ {
-		item := TableHeader{
-			Title: fmt.Sprintf("hoho index ke %v", i+1),
-			Width: float64(40),
-		}
-
-		if i == 2 {
-			var gc []TableHeader
-			for i := 0; i < 3; i++ {
-				grandChild := TableHeader{
-					Title: fmt.Sprintf("hihi %v", i+1),
-					Width: 40,
-				}
-				gc = append(gc, grandChild)
-			}
-
-			item.Children = gc
-		}
-
-		child = append(child, item)
-	}
-
-	header.Children = child
-
-	// for i := 0; i < 100; i++ {
-	// 	result := []string{"lorem", "https://www.google.com", "kolom panjang di nomor tiga dari samping", " empat"}
-	// 	toPdf = append(toPdf, result)
-	// }
-
-	headers = append(headers, header2, header)
 
 	pdfConfig := PdfTableOptions{
-		HeaderRows:   headers,
-		HeaderTitle:  "lorem Ipsum Dolor Sit Amet Lorem Ipsum Dolor",
-		PapperWidth:  600,
-		Papperheight: 300,
+		HeaderRows:  headers,
+		HeaderTitle: "lorem Ipsum Dolor Sit Amet Lorem Ipsum Dolor",
 	}
-	FpdfExport(toPdf, &pdfConfig)
+	ctx := context.Background()
+	ExportTableToPDF(ctx, toPdf, "lorem.pdf", &pdfConfig)
 	// CreateManagementFormPDF(&PdfTableOptions{PapperWidth: 600, Papperheight: 500}, CreateManagementFormTableHeader([]string{"internal", "external"}))
 }
 

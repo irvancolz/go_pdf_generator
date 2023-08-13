@@ -9,9 +9,9 @@ import (
 )
 
 func InitMinio() *minio.Client {
-	endpoint := "192.168.1.80:9000"
-	accessKeyID := "3u8B9LQytFwCeVNmtFlq"
-	secretAccessKey := "p3TgHQVgx9SBPcndQtwbCPwhbqFrK0lGCWyuAHF9"
+	endpoint := "localhost:9000"
+	accessKeyID := "hi6mFwCKqNgw6AmGGVmX"
+	secretAccessKey := "vMRTTEEUnRouKatIeJz2nWPEk4lnYzsQLmn15bZk"
 	useSSL := false
 
 	// Initialize minio client object.
@@ -31,7 +31,7 @@ func InitMinio() *minio.Client {
 func UploadNewFiles(minioClient *minio.Client, path string) {
 	ctx := context.Background()
 
-	result, errorUpload := minioClient.FPutObject(ctx, "users", "nano_chan.jpg", path, minio.PutObjectOptions{})
+	result, errorUpload := minioClient.FPutObject(ctx, "testing", "nano_chan.jpg", path, minio.PutObjectOptions{})
 
 	if errorUpload != nil {
 		log.Println("failed to upload file to minio :", errorUpload)
@@ -97,4 +97,45 @@ func RemoveFile(client *minio.Client, path string) {
 		log.Println("failed to delete file in minio :", errorDelete)
 		return
 	}
+}
+
+func GetFilePath(client *minio.Client, name string) {
+	bucketName := "testing"
+	policy := `{
+		"Version": "2012-10-17",
+		"Statement": [
+			{
+				"Effect": "Allow",
+				"Principal": "*",
+				"Action": "s3:GetObject",
+				"Resource": [
+					"arn:aws:s3:::` + bucketName + `/*"
+				]
+			}
+		]
+	}`
+	c := context.Background()
+	errCreateBucket := client.MakeBucket(c, bucketName, minio.MakeBucketOptions{Region: "us-east-1", ObjectLocking: true})
+	if errCreateBucket != nil {
+		log.Println("failed to create new bucket :", errCreateBucket)
+		return
+	}
+
+	errSetBucketPolicy := client.SetBucketPolicy(c, bucketName, policy)
+	if errSetBucketPolicy != nil {
+		log.Println(errSetBucketPolicy)
+		return
+	}
+}
+
+func CheckObjExist(client *minio.Client, filename string) {
+	bucketName := "testing"
+	c := context.Background()
+	objStat, errGetStat := client.StatObject(c, bucketName, filename, minio.StatObjectOptions{})
+	if errGetStat != nil {
+		log.Println("failed to get obj stat :", errGetStat)
+		return
+	}
+
+	log.Println(objStat)
 }
