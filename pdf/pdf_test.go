@@ -19,9 +19,9 @@ func TestGeneratePdf(t *testing.T) {
 	}
 
 	pdfConfig := PdfTableOptions{
-		HeaderRows:  headers,
-		HeaderTitle: "lorem Ipsum Dolor Sit Amet Lorem Ipsum Dolor",
+		HeaderRows: headers,
 	}
+	t.Log(-90 * -1)
 	ctx := context.Background()
 	ExportTableToPDF(ctx, toPdf, "lorem.pdf", &pdfConfig)
 	// CreateManagementFormPDF(&PdfTableOptions{PapperWidth: 600, Papperheight: 500}, CreateManagementFormTableHeader([]string{"internal", "external"}))

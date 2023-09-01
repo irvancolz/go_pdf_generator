@@ -319,9 +319,60 @@ func ReadFileExcel(filenames string) [][]string {
 		log.Println("failed open excel :", errorReadFile)
 		return nil
 	}
+	rowsData, errGetRow := file.GetRows(file.GetSheetName(0))
+	if errGetRow != nil {
+		log.Println(errGetRow)
+		return nil
+	}
+	result = append(result, rowsData...)
+	// currentSheet := "Sheet1"
+	// rows, errorReadRows := file.Rows(currentSheet)
 
-	currentSheet := "Sheet1"
-	rows, errorReadRows := file.Rows(currentSheet)
+	// if errorReadRows != nil {
+	// 	log.Println("failed to read this rows :", errorReadRows)
+	// 	return nil
+	// }
+
+	// for rows.Next() {
+	// 	row, err := rows.Columns()
+	// 	if err != nil {
+	// 		log.Println("failed to get collumns value :", err)
+	// 		return nil
+	// 	}
+	// 	result = append(result, row)
+	// }
+
+	// if err := rows.Close(); err != nil {
+	// 	fmt.Println(err)
+	// 	return nil
+	// }
+
+	// // remove the headers
+	return result
+}
+
+type ReadExcelFiles struct {
+	RowStart            int
+	ColumnStart         string
+	ColumnEnd           string
+	ConsecutiveRowEmpty int
+}
+
+func (r ReadExcelFiles) ReadExcelManual(pathToFile string) [][]string {
+	var result [][]string
+	if r.ConsecutiveRowEmpty >= 3 ||
+		r.ColumnEnd < r.ColumnStart {
+		return result
+	}
+
+	file, errorReadFile := excelize.OpenFile(pathToFile)
+	if errorReadFile != nil {
+		log.Println("failed open excel :", errorReadFile)
+		return nil
+	}
+
+	file.GetRows(file.GetSheetName(0))
+	rows, errorReadRows := file.Rows(file.GetSheetName(0))
 
 	if errorReadRows != nil {
 		log.Println("failed to read this rows :", errorReadRows)
@@ -329,18 +380,18 @@ func ReadFileExcel(filenames string) [][]string {
 	}
 
 	for rows.Next() {
-		row, err := rows.Columns()
-		if err != nil {
-			log.Println("failed to get collumns value :", err)
-			return nil
+		var rowValues []string
+
+		for curentCol := []byte(r.ColumnStart)[0]; curentCol <= []byte(r.ColumnEnd)[0]; curentCol++ {
+
 		}
-		result = append(result, row)
+
+		result = append(result, rowValues)
 	}
 
 	if err := rows.Close(); err != nil {
 		fmt.Println(err)
-		return nil
 	}
 
-	return result[3:]
+	return result
 }

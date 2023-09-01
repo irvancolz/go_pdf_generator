@@ -8,7 +8,7 @@ import (
 )
 
 func CreateTxtFromTable(data [][]string) {
-	collumnWidth := getCollumnMaxWidth(data)
+	// collumnWidth := getCollumnMaxWidth(data)
 	file, errorCreate := os.Create("test.txt")
 	if errorCreate != nil {
 		log.Println("failed to create txt files :", errorCreate)
@@ -16,11 +16,25 @@ func CreateTxtFromTable(data [][]string) {
 	}
 	defer file.Close()
 
-	beautifiedData := drawTxtTable(data, collumnWidth)
+	// beautifiedData := drawTxtTable(data, collumnWidth)
 	txtFile := bufio.NewWriter(file)
 	defer txtFile.Flush()
 
-	_, errorResult := txtFile.WriteString(strings.Join(beautifiedData, "\n"))
+	toExportedData := strings.Builder{}
+
+	// for _, line := range beautifiedData {
+	// 	toExportedData.WriteString(line + "\n")
+	// }
+
+	for i := 0; i < 1001; i++ {
+		toExportedData.Write([]byte("a"))
+	}
+
+	// _, errorResult := txtFile.WriteString(toExportedData.String())
+	// _, errorResult := txtFile.WriteString(toExportedData.String())
+	// _, errorResult := file.WriteString(toExportedData.String())
+	_, errorResult := file.Write([]byte(toExportedData.String()))
+
 	if errorResult != nil {
 		log.Println("failed to write data to txt :", errorResult)
 		return

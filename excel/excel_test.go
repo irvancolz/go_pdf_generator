@@ -17,7 +17,8 @@ func TestConvertToArray(t *testing.T) {
 	var list []interface{}
 
 	config := ExportToExcelConfig{
-		HeaderText: []string{"CONTACT PERSON ANGGOTA BURSA / PARTISIPAN / PJ SPPA / DU", "Kode :	BUDS", "Nama Perusahaan : 	BUMI DAYA SEKURITAS"},
+		HeaderText:   []string{"CONTACT PERSON ANGGOTA BURSA / PARTISIPAN / PJ SPPA / DU", "Kode :	BUDS", "Nama Perusahaan : 	BUMI DAYA SEKURITAS"},
+		CollumnStart: "A",
 	}
 
 	for i := 0; i < 10; i++ {
@@ -45,8 +46,12 @@ func TestConvertToArray(t *testing.T) {
 }
 
 func TestReadFile(t *testing.T) {
-	excelValue := ReadFileExcel("../lorem.xlsx")
+	// excelValue := ReadFileExcel("lorem.xlsx")
+	excelValue := ReadFileExcel("lorems.xlsx")
 	if excelValue != nil {
-		t.Log(excelValue)
+		t.Log(excelValue[10])
+		t.Log(len(excelValue[10]))
+		// t.Log([]byte("a"))
+		// t.Log([]byte("A"))
 	}
 }

@@ -1,19 +1,25 @@
 package txtfile
 
 import (
-	"fmt"
 	"testing"
 )
 
 func TestCreateTxt(t *testing.T) {
 	var toTxt [][]string
-	for i := 0; i < 100; i++ {
-		result := []string{"lorem", fmt.Sprintf("%v", i+1), "ipsum", "dolor"}
-		if i == 12 {
-			result[2] = "ipsumametasdkfjnakfnanfn"
-		}
-		toTxt = append(toTxt, result)
-	}
+	// for i := 0; i < 3; i++ {
+	// 	result := []string{"lorem", fmt.Sprintf("%v", i+1), "ipsum", "dolor"}
+	// 	if i == 1 {
+	// 		result[2] = func() string {
+	// 			result := "a"
+
+	// 			for i := 0; i < 1200; i++ {
+	// 				result += "a"
+	// 			}
+	// 			return result
+	// 		}()
+	// 	}
+	// 	toTxt = append(toTxt, result)
+	// }
 	CreateTxtFromTable(toTxt)
 }
 
