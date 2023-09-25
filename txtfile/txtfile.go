@@ -4,10 +4,11 @@ import (
 	"bufio"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 )
 
-func CreateTxtFromTable(data [][]string) {
+func CreateTxtFromTable(data [][]string, columnWidth []int) {
 	// collumnWidth := getCollumnMaxWidth(data)
 	file, errorCreate := os.Create("test.txt")
 	if errorCreate != nil {
@@ -19,21 +20,10 @@ func CreateTxtFromTable(data [][]string) {
 	// beautifiedData := drawTxtTable(data, collumnWidth)
 	txtFile := bufio.NewWriter(file)
 	defer txtFile.Flush()
+	beautifiedData := formatRowsData(data, columnWidth)
+	withStylingData := drawTxtTable(beautifiedData, columnWidth)
 
-	toExportedData := strings.Builder{}
-
-	// for _, line := range beautifiedData {
-	// 	toExportedData.WriteString(line + "\n")
-	// }
-
-	for i := 0; i < 1001; i++ {
-		toExportedData.Write([]byte("a"))
-	}
-
-	// _, errorResult := txtFile.WriteString(toExportedData.String())
-	// _, errorResult := txtFile.WriteString(toExportedData.String())
-	// _, errorResult := file.WriteString(toExportedData.String())
-	_, errorResult := file.Write([]byte(toExportedData.String()))
+	_, errorResult := txtFile.WriteString(strings.Join(withStylingData, "\n"))
 
 	if errorResult != nil {
 		log.Println("failed to write data to txt :", errorResult)
@@ -124,18 +114,21 @@ func drawTxtTable(data [][]string, columnWidth []int) []string {
 	for j, item := range data {
 		var beautifiedRows strings.Builder
 		for i, text := range item {
-			beautifiedRows.WriteString("| " + text)
+			beautifiedRows.WriteString("| " + removeEscEnter(text))
 			for space := len(text); space <= columnWidth[i]; space++ {
 				beautifiedRows.WriteString("\u0020")
 			}
-			beautifiedRows.WriteString("|")
+			if i == len(item)-1 {
+				beautifiedRows.WriteString("|")
+			}
 		}
-
+		// the 2 pipe "|" before and after the text and the space " " after the first pipe
+		totalStylingCharacter := 3
 		// header border bottom
 		if j == 0 {
 			beautifiedRows.WriteString("\n")
-			for i := 0; i < len(data[j]); i++ {
-				for char := 0; char <= columnWidth[i]; char++ {
+			for i := 0; i < len(item); i++ {
+				for char := 0; char <= columnWidth[i]+totalStylingCharacter; char++ {
 					beautifiedRows.WriteString("-")
 				}
 			}
@@ -227,4 +220,43 @@ func sliceLongText2(data [][]string, maxWidths []int) [][]string {
 	}
 
 	return sliceLongText2(result, maxWidths)
+}
+
+func removeEscEnter(s string) string {
+	return strings.Join(strings.Split(strings.ReplaceAll(strconv.Quote(s), `"`, ""), `\n`), " ")
+}
+
+func formatRowsData(data [][]string, maxWidths []int) [][]string {
+
+	var result [][]string
+	for line := 0; line < len(data); line++ {
+		copyOfLine := data[line]
+		newLineMock := make([]string, len(copyOfLine))
+		for wordIdx, word := range data[line] {
+			maxWordLen := func() int {
+				if wordIdx >= len(maxWidths) {
+					return 20
+				}
+
+				return maxWidths[wordIdx]
+			}()
+			if len(word) > maxWordLen {
+				slicedWord := string([]byte(word)[:maxWordLen])
+				remainingWord := string([]byte(word)[maxWordLen:])
+				copyOfLine[wordIdx] = slicedWord
+				newLineMock[wordIdx] = remainingWord
+			}
+		}
+		result = append(result, copyOfLine)
+		if getRowMaxContent(newLineMock) != 0 {
+			result = append(result, newLineMock)
+		}
+	}
+
+	if !checkOverlappedText(result, maxWidths) {
+		return result
+	}
+
+	return formatRowsData(result, maxWidths)
+
 }
